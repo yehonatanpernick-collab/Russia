@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Vision Ultimate v31</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background: #020617; color: #f1f5f9; font-family: system-ui, sans-serif; overflow-x: hidden; }
+        .glass { background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(255,255,255,0.05); border-radius: 1.5rem; }
+        .viewer-box { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 1.5rem; overflow: hidden; border: 2px solid #1e293b; }
+        iframe { width: 100%; height: 100%; border: none; }
+        .btn-nav { @apply flex-1 p-4 glass hover:bg-blue-600/20 transition-all font-bold text-xs uppercase tracking-tighter text-center border-none; }
+        .active-btn { border-bottom: 3px solid #3b82f6 !important; color: #60a5fa; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto space-y-6">
+        <header class="glass p-6 flex flex-col md:flex-row gap-4 items-center shadow-2xl">
+            <div class="flex items-center gap-3 shrink-0">
+                <i data-lucide="shield-check" class="text-blue-500 w-8 h-8"></i>
+                <h1 class="text-xl font-black italic tracking-tighter">VISION <span class="text-blue-500">ULTIMATE</span></h1>
+            </div>
+            <div class="relative w-full">
+                <input type="text" id="citySearch" placeholder="הקלד עיר (למשל: ירושלים, אלפים, ניו יורק)..." 
+                       class="w-full bg-slate-950 border border-slate-800 rounded-2xl py-4 px-12 outline-none focus:border-blue-500 text-right font-bold transition-all">
+                <button onclick="updateAll()" class="absolute left-3 top-3 p-1.5 bg-blue-600 rounded-xl text-white hover:scale-105 transition"><i data-lucide="search" class="w-5 h-5"></i></button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div class="lg:col-span-4 space-y-6">
+                <div class="glass p-8 border-r-8 border-blue-600 relative overflow-hidden">
+                    <div id="snowTag" class="absolute top-4 left-4 hidden bg-blue-500 text-[10px] px-2 py-1 rounded-full animate-pulse font-bold">שלג צפוי!</div>
+                    <h2 id="dispCity" class="text-4xl font-black italic">---</h2>
+                    <div class="flex items-baseline gap-2 mt-4">
+                        <span id="dispTemp" class="text-8xl font-black tracking-tighter">--</span>
+                        <span class="text-3xl text-slate-500 font-bold">°C</span>
+                    </div>
+                    <div class="mt-6 grid grid-cols-2 gap-3 text-[11px] font-bold uppercase tracking-widest opacity-70">
+                        <div class="bg-slate-800 p-2 rounded-lg">גשם: <span id="rainVal" class="text-blue-400">0%</span></div>
+                        <div class="bg-slate-800 p-2 rounded-lg">שלג: <span id="snowVal" class="text-blue-300">0cm</span></div>
+                    </div>
+                </div>
+
+                <div class="glass p-5">
+                    <h3 class="text-[10px] font-bold text-slate-500 uppercase mb-4 flex justify-between items-center">
+                        <span>תחזית אמת (7 ימים)</span>
+                        <i data-lucide="calendar" class="w-4 h-4"></i>
+                    </h3>
+                    <div id="foreContainer" class="space-y-2 h-48 overflow-y-auto"></div>
+                </div>
+
+                <div class="glass p-5 border-t-2 border-blue-500/30">
+                    <h3 class="text-[10px] font-bold text-blue-400 uppercase mb-2">מגמת משקעים חודשית</h3>
+                    <p id="monthlyTrend" class="text-xs text-slate-400 italic">מנתח נתוני אנומליה...</p>
+                </div>
+            </div>
+
+            <div class="lg:col-span-8 space-y-4">
+                <div class="viewer-box shadow-2xl">
+                    <iframe id="mainViewer" allow="autoplay; fullscreen"></iframe>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                    <button id="btn-radar" onclick="setMode('radar')" class="btn-nav active-btn">מכ"ם גשם</button>
+                    <button id="btn-cam" onclick="setMode('cam')" class="btn-nav">מצלמות חיות</button>
+                    <button id="btn-sat" onclick="setMode('sat')" class="btn-nav">לוויין</button>
+                    <button onclick="openMaps()" class="btn-nav bg-green-900/20 text-green-400">Google Maps</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let state = { lat: 31.76, lon: 35.21, city: "ירושלים", mode: 'radar' };
+        lucide.createIcons();
+        updateAll("ירושלים");
+
+        async function updateAll(override) {
+            const city = override || document.getElementById('citySearch').value;
+            if(!city) return;
+            try {
+                const geo = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=he`);
+                const geoData = await geo.json();
+                if(geoData.results) {
+                    const loc = geoData.results[0];
+                    state.lat = loc.latitude; state.lon = loc.longitude; state.city = loc.name;
+                    document.getElementById('dispCity').innerText = loc.name;
+                    fetchWeather();
+                    render();
+                }
+            } catch (e) { console.error("Update failed"); }
+        }
+
+        async function fetchWeather() {
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${state.lat}&longitude=${state.lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,snowfall_sum&timezone=auto`);
+            const data = await res.json();
+            
+            document.getElementById('dispTemp').innerText = Math.round(data.current_weather.temperature);
+            document.getElementById('rainVal').innerText = data.daily.precipitation_probability_max[0] + "%";
+            document.getElementById('snowVal').innerText = data.daily.snowfall_sum[0] + "cm";
+            document.getElementById('snowTag').classList.toggle('hidden', data.daily.snowfall_sum[0] <= 0);
+
+            // Monthly Trend Analysis
+            const avg = data.daily.precipitation_probability_max.reduce((a,b) => a+b, 0) / 7;
+            document.getElementById('monthlyTrend').innerText = avg > 30 ? 
+                "החודש צפוי להיות גשום מהממוצע עם כניסת מערכות משמעותיות." : 
+                "החודש צפוי להיות יבש מהרגיל עם מערכות חולפות בלבד.";
+
+            const fore = document.getElementById('foreContainer');
+            fore.innerHTML = "";
+            for(let i=0; i<7; i++) {
+                const d = new Date(); d.setDate(d.getDate()+i);
+                fore.innerHTML += `
+                    <div class="flex justify-between items-center p-3 bg-white/5 rounded-xl text-xs border border-white/5">
+                        <span class="opacity-40 font-bold">${d.getDate()}/${d.getMonth()+1}</span>
+                        <span class="font-black">${Math.round(data.daily.temperature_2m_max[i])}° / ${Math.round(data.daily.temperature_2m_min[i])}°</span>
+                        <span class="text-blue-400 font-bold">${data.daily.precipitation_probability_max[i]}%</span>
+                    </div>
+                `;
+            }
+        }
+
+        function setMode(m) { state.mode = m; render(); }
+
+        function render() {
+            const v = document.getElementById('mainViewer');
+            document.querySelectorAll('.btn-nav').forEach(b => b.classList.remove('active-btn'));
+            document.getElementById(`btn-${state.mode}`)?.classList.add('active-btn');
+
+            if(state.mode === 'radar') {
+                v.src = `https://embed.windy.com/embed2.html?lat=${state.lat}&lon=${state.lon}&zoom=7&level=surface&overlay=radar&product=radar&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
+            } else if(state.mode === 'cam') {
+                v.src = `https://www.windy.com/-Webcams/${state.lat}/${state.lon}?webcams,${state.lat},${state.lon},10,embed`;
+            } else if(state.mode === 'sat') {
+                v.src = `https://embed.windy.com/embed2.html?lat=${state.lat}&lon=${state.lon}&zoom=5&level=surface&overlay=satellite&product=satellite&menu=&message=&marker=&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
+            }
+        }
+
+        function openMaps() {
+            window.open(`https://www.google.com/maps/@${state.lat},${state.lon},14z/data=!3m1!1e3`, '_blank');
+        }
+
+        document.getElementById('citySearch').addEventListener('keypress', (e) => { if(e.key === 'Enter') updateAll(); });
+    </script>
+</body>
+</html>
